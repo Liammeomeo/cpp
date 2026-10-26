@@ -1,0 +1,1183 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>C++ Live Studio — Online Compiler & Real-time Collaboration</title>
+  <!-- Font chữ lập trình JetBrains Mono & Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&display=swap" rel="stylesheet">
+  <!-- Thư viện MQTT over WebSocket cho tính năng Live Collaboration xuyên thiết bị -->
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+
+  <style>
+    :root {
+      --bg-primary: #1e1e1e;
+      --bg-secondary: #252526;
+      --bg-tertiary: #2d2d30;
+      --bg-header: #181818;
+      --border-color: #3e3e42;
+      --text-main: #d4d4d4;
+      --text-muted: #858585;
+      --accent-blue: #007acc;
+      --accent-blue-hover: #1f8ad2;
+      --accent-green: #2ea043;
+      --accent-green-hover: #3fb950;
+      --accent-orange: #d29922;
+      --accent-red: #f85149;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', Consolas, 'Courier New', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-primary);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    /* ================= 1. TOOLBAR (THANH CÔNG CỤ) ================= */
+    .toolbar {
+      height: 52px;
+      background-color: var(--bg-header);
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 15px;
+      color: #fff;
+      letter-spacing: -0.3px;
+    }
+
+    .brand-badge {
+      background: linear-gradient(135deg, #00599c, #004482);
+      color: #fff;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      font-weight: 700;
+      padding: 4px 7px;
+      border-radius: 5px;
+      border: 1px solid #3182ce;
+    }
+
+    .toolbar-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn {
+      background-color: var(--bg-tertiary);
+      color: var(--text-main);
+      border: 1px solid var(--border-color);
+      padding: 6px 12px;
+      border-radius: 5px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+      font-family: var(--font-sans);
+    }
+
+    .btn:hover {
+      background-color: #3c3c40;
+      border-color: #555;
+    }
+
+    .btn:active {
+      transform: translateY(1px);
+    }
+
+    .btn-run {
+      background-color: var(--accent-green);
+      border-color: #238636;
+      color: #ffffff;
+      font-weight: 600;
+      padding: 6px 14px;
+    }
+
+    .btn-run:hover {
+      background-color: var(--accent-green-hover);
+      border-color: #2ea043;
+    }
+
+    .btn-run:disabled {
+      opacity: 0.6;
+      cursor: wait;
+    }
+
+    .btn-primary {
+      background-color: var(--accent-blue);
+      border-color: #0062a3;
+      color: #ffffff;
+    }
+
+    .btn-primary:hover {
+      background-color: var(--accent-blue-hover);
+    }
+
+    .select-box, .input-inline {
+      background-color: var(--bg-secondary);
+      color: var(--text-main);
+      border: 1px solid var(--border-color);
+      padding: 5px 10px;
+      border-radius: 5px;
+      font-size: 12.5px;
+      font-family: var(--font-sans);
+      outline: none;
+    }
+
+    .input-inline {
+      width: 115px;
+    }
+
+    .input-inline:focus, .select-box:focus {
+      border-color: var(--accent-blue);
+    }
+
+    /* Khu vực hiển thị Phòng & Cộng tác viên */
+    .collab-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--bg-secondary);
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--accent-orange);
+      display: inline-block;
+    }
+
+    .status-dot.online {
+      background-color: #3fb950;
+      box-shadow: 0 0 6px #3fb950;
+    }
+
+    .room-tag {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: #58a6ff;
+      font-weight: 600;
+    }
+
+    .user-list {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-left: 4px;
+    }
+
+    .user-avatar {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      color: #111;
+      border: 2px solid var(--bg-header);
+      position: relative;
+      cursor: pointer;
+    }
+
+    .user-avatar:hover::after {
+      content: attr(data-name);
+      position: absolute;
+      top: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #111;
+      color: #fff;
+      font-size: 11px;
+      padding: 3px 7px;
+      border-radius: 4px;
+      white-space: nowrap;
+      z-index: 100;
+      border: 1px solid var(--border-color);
+    }
+
+    /* ================= 2. EDITOR AREA (TRÌNH SOẠN THẢO) ================= */
+    .workspace {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .editor-tabs {
+      height: 35px;
+      background-color: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-right: 12px;
+    }
+
+    .tab {
+      height: 100%;
+      background-color: var(--bg-primary);
+      border-top: 2px solid var(--accent-blue);
+      border-right: 1px solid var(--border-color);
+      padding: 0 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: #fff;
+      font-family: var(--font-mono);
+    }
+
+    .editor-hint {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    kbd {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-color);
+      border-radius: 3px;
+      padding: 1px 5px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: #ccc;
+    }
+
+    #editor-container {
+      flex: 1;
+      width: 100%;
+      min-height: 260px;
+      position: relative;
+    }
+
+    /* ================= 3. IO CONSOLE / TERMINAL ================= */
+    .resizer {
+      height: 5px;
+      background-color: var(--bg-secondary);
+      border-top: 1px solid var(--border-color);
+      border-bottom: 1px solid var(--border-color);
+      cursor: row-resize;
+      transition: background-color 0.15s;
+    }
+
+    .resizer:hover {
+      background-color: var(--accent-blue);
+    }
+
+    .io-panel {
+      height: 250px;
+      min-height: 120px;
+      max-height: 65vh;
+      background-color: var(--bg-header);
+      display: grid;
+      grid-template-columns: 35% 65%;
+      flex-shrink: 0;
+    }
+
+    .io-pane {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    .io-pane:first-child {
+      border-right: 1px solid var(--border-color);
+    }
+
+    .pane-header {
+      height: 32px;
+      background-color: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-color);
+      padding: 0 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+    }
+
+    #stdin-input {
+      flex: 1;
+      width: 100%;
+      background-color: var(--bg-primary);
+      color: var(--text-main);
+      border: none;
+      padding: 10px 12px;
+      font-family: var(--font-mono);
+      font-size: 13.5px;
+      resize: none;
+      outline: none;
+      line-height: 1.5;
+    }
+
+    #terminal-output {
+      flex: 1;
+      background-color: #141414;
+      padding: 10px 14px;
+      font-family: var(--font-mono);
+      font-size: 13.5px;
+      line-height: 1.55;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      user-select: text;
+    }
+
+    .out-info { color: #58a6ff; }
+    .out-success { color: #3fb950; }
+    .out-error { color: #f85149; }
+    .out-stdout { color: #e6edf3; }
+    .out-meta {
+      margin-top: 10px;
+      padding-top: 8px;
+      border-top: 1px dashed #30363d;
+      color: #8b949e;
+      font-size: 12px;
+    }
+
+    /* ================= 4. REMOTE CURSOR STYLES ================= */
+    .remote-cursor-caret {
+      position: relative;
+      border-left: 2px solid;
+      margin-left: -1px;
+      pointer-events: none;
+      z-index: 20;
+    }
+
+    .remote-cursor-label {
+      position: absolute;
+      top: -18px;
+      left: -2px;
+      font-family: var(--font-sans);
+      font-size: 10px;
+      font-weight: 700;
+      padding: 1px 5px;
+      border-radius: 3px 3px 3px 0;
+      color: #111;
+      white-space: nowrap;
+      pointer-events: none;
+      z-index: 30;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+    }
+
+    /* Toast thông báo */
+    #toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: var(--accent-blue);
+      color: #fff;
+      padding: 10px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+      opacity: 0;
+      transform: translateY(10px);
+      transition: all 0.25s ease;
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    #toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ================= 1. THANH CÔNG CỤ (TOOLBAR) ================= -->
+  <header class="toolbar">
+    <div class="toolbar-group">
+      <div class="brand">
+        <span class="brand-badge">C++20</span>
+        <span>CodeLive Studio</span>
+      </div>
+
+      <button class="btn" id="btn-new" title="Tạo lại file mẫu chuẩn Code::Blocks">
+        📄 New File
+      </button>
+      <button class="btn" id="btn-cp-template" title="Chèn nhanh Template Lập trình thi đấu (bits/stdc++.h + Fast I/O)">
+        ⚡ CP Template
+      </button>
+
+      <select class="select-box" id="compiler-select" title="Chọn API biên dịch">
+        <option value="wandbox">GCC 13.2 (Wandbox API - Free)</option>
+        <option value="judge0">GCC 9.2 (Judge0 CE API)</option>
+      </select>
+
+      <button class="btn btn-run" id="btn-run" title="Biên dịch và Chạy (Phím tắt: F9 hoặc Ctrl+Enter)">
+        ▶ Build & Run (F9)
+      </button>
+    </div>
+
+    <!-- Khu vực Live Collaboration -->
+    <div class="toolbar-group">
+      <div class="collab-bar">
+        <span class="status-dot" id="collab-dot" title="Trạng thái kết nối thời gian thực"></span>
+        <span style="font-size: 12px; color: var(--text-muted);">Room:</span>
+        <span class="room-tag" id="room-id-display">...</span>
+
+        <input type="text" id="username-input" class="input-inline" placeholder="Tên của bạn..." title="Đổi tên hiển thị trên con trỏ" />
+
+        <div class="user-list" id="user-list"></div>
+      </div>
+
+      <button class="btn btn-primary" id="btn-share" title="Copy link phòng để mời bạn bè cùng code">
+        🔗 Share Room
+      </button>
+      <button class="btn" id="btn-new-room" title="Tạo một phòng cộng tác mới">
+        ➕ Phòng mới
+      </button>
+    </div>
+  </header>
+
+  <!-- ================= 2. KHUNG SOẠN THẢO (MONACO EDITOR) ================= -->
+  <main class="workspace">
+    <div class="editor-tabs">
+      <div class="tab">
+        <span style="color: #58a6ff;">C++</span>
+        <span>main.cpp</span>
+      </div>
+      <div class="editor-hint">
+        Phím tắt: <kbd>F9</kbd> hoặc <kbd>Ctrl</kbd> + <kbd>Enter</kbd> để chạy &nbsp;|&nbsp; <kbd>Ctrl</kbd> + <kbd>Space</kbd> gợi ý code
+      </div>
+    </div>
+
+    <div id="editor-container"></div>
+
+    <!-- Thanh kéo thay đổi kích thước -->
+    <div class="resizer" id="panel-resizer"></div>
+
+    <!-- ================= 3. KHUNG IO CONSOLE / TERMINAL ================= -->
+    <section class="io-panel" id="io-panel">
+      <!-- Cột trái: Standard Input (STDIN) -->
+      <div class="io-pane">
+        <div class="pane-header">
+          <span>📥 Standard Input (STDIN)</span>
+          <span style="font-size: 11px; font-weight: 400;">Đồng bộ real-time</span>
+        </div>
+        <textarea id="stdin-input" placeholder="Nhập dữ liệu test (input) tại đây trước khi bấm Build & Run..."></textarea>
+      </div>
+
+      <!-- Cột phải: Terminal Output (STDOUT / STDERR) -->
+      <div class="io-pane">
+        <div class="pane-header">
+          <span>🖥️ Build Log & Terminal Output (STDOUT / STDERR)</span>
+          <button class="btn" id="btn-clear-terminal" style="padding: 2px 8px; font-size: 11px;">Xóa</button>
+        </div>
+        <div id="terminal-output">
+          <span class="out-info">Sẵn sàng. Nhấn "Build & Run (F9)" để biên dịch và thực thi chương trình C++.</span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast">Đã sao chép liên kết phòng!</div>
+
+  <!-- Tải Monaco Editor Loader từ CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+
+  <script>
+    /*************************************************************************
+     * 1. CODE MẪU BAN ĐẦU (CHUẨN CODE::BLOCKS & CP TEMPLATE)
+     *************************************************************************/
+    const CODEBLOCKS_TEMPLATE = `#include <iostream>
+using namespace std;
+
+int main() {
+    cout << "Hello, World!\\n";
+    
+    return 0;
+}`;
+
+    const CP_TEMPLATE = `#include <bits/stdc++.h>
+using namespace std;
+
+int main() {
+    ios_base::sync_with_stdio(false);
+    cin.tie(NULL);
+    
+    int n;
+    if (cin >> n) {
+        cout << "Gia tri vua nhap: " << n << "\\n";
+    } else {
+        cout << "Hello Competitive Programming!\\n";
+    }
+    
+    return 0;
+}`;
+
+    // Nếu bạn muốn dùng Judge0 qua RapidAPI, điền API Key vào đây (Wandbox thì không cần key)
+    const JUDGE0_RAPIDAPI_KEY = ""; 
+
+    let editor = null;
+    let isApplyingRemoteChange = false;
+
+    /*************************************************************************
+     * 2. KHỞI TẠO MONACO EDITOR & AUTO-COMPLETE C++ THÔNG MINH
+     *************************************************************************/
+    require.config({
+      paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' }
+    });
+
+    require(['vs/editor/editor.main'], function () {
+      // Đăng ký bộ gợi ý code (Auto-complete / IntelliSense) chuyên biệt cho C++
+      monaco.languages.registerCompletionItemProvider('cpp', {
+        provideCompletionItems: function (model, position) {
+          const word = model.getWordUntilPosition(position);
+          const range = {
+            startLineNumber: position.lineNumber,
+            endLineNumber: position.lineNumber,
+            startColumn: word.startColumn,
+            endColumn: word.endColumn
+          };
+
+          const suggestions = [
+            {
+              label: 'cout',
+              kind: monaco.languages.CompletionItemKind.Snippet,
+              insertText: 'cout << ${1:value} << "\\n";',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              documentation: 'Xuất dữ liệu ra màn hình (Standard Output)',
+              range
+            },
+            {
+              label: 'cin',
+              kind: monaco.languages.CompletionItemKind.Snippet,
+              insertText: 'cin >> ${1:variable};',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              documentation: 'Nhập dữ liệu từ bàn phím (Standard Input)',
+              range
+            },
+            {
+              label: 'std::vector',
+              kind: monaco.languages.CompletionItemKind.Class,
+              insertText: 'vector<${1:int}> ${2:v};',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              documentation: 'Mảng động STL std::vector',
+              range
+            },
+            {
+              label: 'std::pair',
+              kind: monaco.languages.CompletionItemKind.Struct,
+              insertText: 'pair<${1:int}, ${2:int}> ${3:p};',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              documentation: 'Cặp giá trị STL std::pair',
+              range
+            },
+            {
+              label: 'std::deque',
+              kind: monaco.languages.CompletionItemKind.Class,
+              insertText: 'deque<${1:int}> ${2:dq};',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              documentation: 'Hàng đợi hai đầu STL std::deque',
+              range
+            },
+            {
+              label: 'std::string',
+              kind: monaco.languages.CompletionItemKind.Class,
+              insertText: 'string ${1:s};',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              documentation: 'Chuỗi ký tự STL std::string',
+              range
+            },
+            {
+              label: 'fastio',
+              kind: monaco.languages.CompletionItemKind.Snippet,
+              insertText: 'ios_base::sync_with_stdio(false);\ncin.tie(NULL);',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              documentation: 'Tối ưu tốc độ nhập xuất trong C++',
+              range
+            },
+            {
+              label: 'bits',
+              kind: monaco.languages.CompletionItemKind.Snippet,
+              insertText: '#include <bits/stdc++.h>\nusing namespace std;\n',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              documentation: 'Khai báo thư viện tổng hợp C++',
+              range
+            },
+            {
+              label: 'fori',
+              kind: monaco.languages.CompletionItemKind.Snippet,
+              insertText: 'for (int ${1:i} = 0; ${1:i} < ${2:n}; ++${1:i}) {\n\t$0\n}',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              documentation: 'Vòng lặp for chuẩn',
+              range
+            },
+            {
+              label: 'sort_all',
+              kind: monaco.languages.CompletionItemKind.Function,
+              insertText: 'sort(${1:v}.begin(), ${1:v}.end());',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              documentation: 'Sắp xếp toàn bộ vector/container tăng dần',
+              range
+            },
+            {
+              label: 'lower_bound',
+              kind: monaco.languages.CompletionItemKind.Function,
+              insertText: 'lower_bound(${1:v}.begin(), ${1:v}.end(), ${2:x})',
+              insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              documentation: 'Tìm kiếm nhị phân phần tử đầu tiên >= x',
+              range
+            }
+          ];
+
+          return { suggestions };
+        }
+      });
+
+      // Khởi tạo trình soạn thảo Monaco
+      editor = monaco.editor.create(document.getElementById('editor-container'), {
+        value: CODEBLOCKS_TEMPLATE,
+        language: 'cpp',
+        theme: 'vs-dark',
+        fontFamily: "'JetBrains Mono', Consolas, monospace",
+        fontSize: 14,
+        lineNumbers: 'on',
+        roundedSelection: false,
+        scrollBeyondLastLine: false,
+        automaticLayout: true,
+        tabSize: 4,
+        insertSpaces: true,
+        autoIndent: 'full',
+        formatOnPaste: true,
+        formatOnType: true,
+        minimap: { enabled: true },
+        padding: { top: 12, bottom: 12 }
+      });
+
+      // Phím tắt F9 (chuẩn Code::Blocks) và Ctrl+Enter để Build & Run
+      editor.addCommand(monaco.KeyCode.F9, () => runCode());
+      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => runCode());
+
+      // Lắng nghe thay đổi nội dung code để đồng bộ real-time
+      editor.onDidChangeModelContent(() => {
+        if (isApplyingRemoteChange) return;
+        broadcastState('code', { code: editor.getValue() });
+      });
+
+      // Lắng nghe di chuyển con trỏ & bôi đen (selection) để hiển thị trên màn hình người khác
+      editor.onDidChangeCursorSelection((e) => {
+        if (isApplyingRemoteChange) return;
+        broadcastState('cursor', {
+          position: e.selection.getPosition(),
+          selection: {
+            startLineNumber: e.selection.startLineNumber,
+            startColumn: e.selection.startColumn,
+            endLineNumber: e.selection.endLineNumber,
+            endColumn: e.selection.endColumn
+          }
+        });
+      });
+
+      // Khởi động hệ thống Live Collaboration sau khi Editor đã sẵn sàng
+      initCollaboration();
+    });
+
+    /*************************************************************************
+     * 3. HỆ THỐNG LIVE COLLABORATION (ĐỒNG BỘ CODE & CON TRỎ REAL-TIME)
+     *************************************************************************/
+    const COLORS = ['#3fb950', '#58a6ff', '#f0883e', '#d2a8ff', '#ff7b72', '#f2cc60', '#39c5cf'];
+    const myClientId = 'user_' + Math.random().toString(36).substring(2, 9);
+    const myColor = COLORS[Math.floor(Math.random() * COLORS.length)];
+    let myName = localStorage.getItem('cpp_collab_username') || ('Coder_' + Math.floor(100 + Math.random() * 900));
+
+    const usernameInput = document.getElementById('username-input');
+    usernameInput.value = myName;
+
+    // Lấy hoặc tạo mã phòng trên URL (?room=xxxx)
+    const urlParams = new URLSearchParams(window.location.search);
+    let roomId = urlParams.get('room');
+    if (!roomId) {
+      roomId = 'cpp-' + Math.random().toString(36).substring(2, 8);
+      window.history.replaceState({}, '', `?room=${roomId}`);
+    }
+    document.getElementById('room-id-display').textContent = roomId;
+
+    let mqttClient = null;
+    let localChannel = null;
+    const peers = new Map(); // Lưu thông tin thành viên & decoration con trỏ
+
+    function initCollaboration() {
+      // 1. BroadcastChannel: Đồng bộ tức thì (0ms) giữa các tab trên cùng máy
+      if ('BroadcastChannel' in window) {
+        localChannel = new BroadcastChannel(`cpp_live_room_${roomId}`);
+        localChannel.onmessage = (ev) => handleIncomingMessage(ev.data);
+      }
+
+      // 2. MQTT over WebSocket: Đồng bộ xuyên máy tính qua Internet không cần cài đặt Backend
+      const brokerUrl = 'wss://broker.emqx.io:8084/mqtt';
+      const topic = `codelive_cpp_v1/room/${roomId}`;
+
+      mqttClient = mqtt.connect(brokerUrl, {
+        clientId: 'cpp_ide_' + myClientId + '_' + Date.now(),
+        clean: true,
+        connectTimeout: 4000,
+        reconnectPeriod: 2000
+      });
+
+      mqttClient.on('connect', () => {
+        document.getElementById('collab-dot').classList.add('online');
+        mqttClient.subscribe(topic, { qos: 0 });
+        // Gửi tín hiệu join phòng để nhận dữ liệu hiện tại từ các thành viên đang ở trong phòng
+        broadcastState('join', { requestSync: true });
+      });
+
+      mqttClient.on('message', (receivedTopic, payload) => {
+        try {
+          const data = JSON.parse(payload.toString());
+          handleIncomingMessage(data);
+        } catch (err) {
+          console.error('Lỗi đọc gói tin cộng tác:', err);
+        }
+      });
+
+      // Định kỳ gửi heartbeat (presence) mỗi 4 giây
+      setInterval(() => {
+        broadcastState('presence', {});
+        cleanupInactivePeers();
+      }, 4000);
+
+      renderUserList();
+    }
+
+    function broadcastState(type, payload) {
+      const message = {
+        type,
+        senderId: myClientId,
+        senderName: myName,
+        senderColor: myColor,
+        timestamp: Date.now(),
+        ...payload
+      };
+
+      if (localChannel) {
+        localChannel.postMessage(message);
+      }
+
+      if (mqttClient && mqttClient.connected) {
+        const topic = `codelive_cpp_v1/room/${roomId}`;
+        mqttClient.publish(topic, JSON.stringify(message), { qos: 0 });
+      }
+    }
+
+    function handleIncomingMessage(msg) {
+      if (!msg || msg.senderId === myClientId) return;
+
+      // Cập nhật thông tin thành viên trong phòng
+      updatePeerPresence(msg.senderId, msg.senderName, msg.senderColor);
+
+      switch (msg.type) {
+        case 'join':
+          // Khi có người mới vào phòng, gửi trạng thái code + stdin + vị trí con trỏ hiện tại cho họ
+          broadcastState('sync_full', {
+            code: editor.getValue(),
+            stdin: document.getElementById('stdin-input').value
+          });
+          break;
+
+        case 'sync_full':
+          if (editor && msg.code && editor.getValue() === CODEBLOCKS_TEMPLATE) {
+            applyRemoteCode(msg.code);
+          }
+          if (typeof msg.stdin === 'string' && !document.getElementById('stdin-input').value) {
+            document.getElementById('stdin-input').value = msg.stdin;
+          }
+          break;
+
+        case 'code':
+          if (editor && typeof msg.code === 'string' && msg.code !== editor.getValue()) {
+            applyRemoteCode(msg.code);
+          }
+          break;
+
+        case 'cursor':
+          renderRemoteCursor(msg.senderId, msg.senderName, msg.senderColor, msg.position, msg.selection);
+          break;
+
+        case 'stdin':
+          const stdinEl = document.getElementById('stdin-input');
+          if (stdinEl.value !== msg.stdin) {
+            stdinEl.value = msg.stdin;
+          }
+          break;
+      }
+    }
+
+    // Áp dụng code từ người khác mà không làm nhảy con trỏ của mình
+    function applyRemoteCode(newCode) {
+      isApplyingRemoteChange = true;
+      const currentPos = editor.getPosition();
+      const currentScroll = editor.getScrollTop();
+      editor.setValue(newCode);
+      if (currentPos) editor.setPosition(currentPos);
+      editor.setScrollTop(currentScroll);
+      isApplyingRemoteChange = false;
+    }
+
+    // Vẽ con trỏ chuột (Cursor) và vùng bôi đen (Selection) của người khác trên Monaco Editor
+    function renderRemoteCursor(peerId, peerName, peerColor, position, selection) {
+      if (!editor || !position) return;
+
+      ensurePeerCursorStyle(peerId, peerName, peerColor);
+
+      const peer = peers.get(peerId);
+      if (!peer) return;
+
+      const newDecorations = [
+        {
+          range: new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column),
+          options: {
+            className: `remote-caret-${peerId}`,
+            beforeContentClassName: `remote-label-${peerId}`,
+            stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges
+          }
+        }
+      ];
+
+      // Nếu người đó đang bôi đen một đoạn code
+      if (
+        selection &&
+        (selection.startLineNumber !== selection.endLineNumber || selection.startColumn !== selection.endColumn)
+      ) {
+        newDecorations.push({
+          range: new monaco.Range(
+            selection.startLineNumber,
+            selection.startColumn,
+            selection.endLineNumber,
+            selection.endColumn
+          ),
+          options: {
+            className: `remote-selection-${peerId}`
+          }
+        });
+      }
+
+      peer.decorations = editor.deltaDecorations(peer.decorations || [], newDecorations);
+    }
+
+    // Tự động tạo CSS động cho màu sắc và nhãn tên trên con trỏ của từng người
+    function ensurePeerCursorStyle(peerId, peerName, peerColor) {
+      let styleEl = document.getElementById(`style-${peerId}`);
+      if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = `style-${peerId}`;
+        document.head.appendChild(styleEl);
+      }
+      const safeName = (peerName || 'Guest').replace(/"/g, '\\"');
+      styleEl.textContent = `
+        .remote-caret-${peerId} {
+          border-left: 2px solid ${peerColor} !important;
+          margin-left: -1px;
+        }
+        .remote-label-${peerId}::after {
+          content: "${safeName}";
+          position: absolute;
+          top: -18px;
+          left: -2px;
+          background: ${peerColor};
+          color: #111;
+          font-family: 'Inter', sans-serif;
+          font-size: 10px;
+          font-weight: 700;
+          padding: 1px 5px;
+          border-radius: 3px 3px 3px 0;
+          white-space: nowrap;
+          pointer-events: none;
+          z-index: 50;
+        }
+        .remote-selection-${peerId} {
+          background-color: ${peerColor}33 !important;
+        }
+      `;
+    }
+
+    function updatePeerPresence(peerId, peerName, peerColor) {
+      const existing = peers.get(peerId) || { decorations: [] };
+      existing.name = peerName || 'Coder';
+      existing.color = peerColor || '#58a6ff';
+      existing.lastSeen = Date.now();
+      peers.set(peerId, existing);
+      renderUserList();
+    }
+
+    function cleanupInactivePeers() {
+      const now = Date.now();
+      let changed = false;
+      for (const [peerId, peer] of peers.entries()) {
+        if (now - peer.lastSeen > 12000) {
+          if (editor && peer.decorations) {
+            editor.deltaDecorations(peer.decorations, []);
+          }
+          peers.delete(peerId);
+          changed = true;
+        }
+      }
+      if (changed) renderUserList();
+    }
+
+    function renderUserList() {
+      const container = document.getElementById('user-list');
+      container.innerHTML = '';
+
+      // Avatar của chính mình
+      const meBadge = document.createElement('div');
+      meBadge.className = 'user-avatar';
+      meBadge.style.backgroundColor = myColor;
+      meBadge.setAttribute('data-name', `${myName} (Bạn)`);
+      meBadge.textContent = myName.slice(0, 2).toUpperCase();
+      container.appendChild(meBadge);
+
+      // Avatar của những người đang cùng trong phòng
+      for (const [, peer] of peers.entries()) {
+        const badge = document.createElement('div');
+        badge.className = 'user-avatar';
+        badge.style.backgroundColor = peer.color;
+        badge.setAttribute('data-name', peer.name);
+        badge.textContent = peer.name.slice(0, 2).toUpperCase();
+        container.appendChild(badge);
+      }
+    }
+
+    /*************************************************************************
+     * 4. TÍNH NĂNG BIÊN DỊCH & THỰC THI CODE C++ (COMPILER API)
+     *************************************************************************/
+    async function runCode() {
+      if (!editor) return;
+
+      const runBtn = document.getElementById('btn-run');
+      const terminal = document.getElementById('terminal-output');
+      const stdin = document.getElementById('stdin-input').value;
+      const code = editor.getValue();
+      const compilerEngine = document.getElementById('compiler-select').value;
+
+      runBtn.disabled = true;
+      runBtn.textContent = '⏳ Compiling...';
+      terminal.innerHTML = `<span class="out-info">⚙️ Đang biên dịch và thực thi với chuẩn C++20 (-O2 -Wall)...</span>`;
+
+      const startTime = performance.now();
+
+      try {
+        if (compilerEngine === 'judge0' && JUDGE0_RAPIDAPI_KEY) {
+          await executeWithJudge0(code, stdin, terminal, startTime);
+        } else {
+          await executeWithWandbox(code, stdin, terminal, startTime);
+        }
+      } catch (error) {
+        terminal.innerHTML = `<span class="out-error">❌ Lỗi kết nối tới máy chủ biên dịch:\n${escapeHtml(error.message)}</span>`;
+      } finally {
+        runBtn.disabled = false;
+        runBtn.textContent = '▶ Build & Run (F9)';
+      }
+    }
+
+    // Phương thức 1: Wandbox API (Miễn phí, không cần API Key, hỗ trợ GCC 13.2 C++20)
+    async function executeWithWandbox(code, stdin, terminal, startTime) {
+      const response = await fetch('https://wandbox.org/api/compile.json', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          compiler: 'gcc-head',
+          code: code,
+          stdin: stdin,
+          'compiler-option-raw': '-O2\n-std=c++20\n-Wall'
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP Error ${response.status}`);
+      }
+
+      const result = await response.json();
+      const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
+      renderExecutionOutput({
+        compilerError: result.compiler_error || result.compiler_message || '',
+        programOutput: result.program_output || result.program_message || '',
+        exitStatus: result.status,
+        elapsed
+      });
+    }
+
+    // Phương thức 2: Judge0 CE API (Dành cho trường hợp bạn muốn dùng Judge0)
+    async function executeWithJudge0(code, stdin, terminal, startTime) {
+      const endpoint = 'https://judge0-ce.p.rapidapi.com/submissions?base64_encoded=false&wait=true';
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-RapidAPI-Key': JUDGE0_RAPIDAPI_KEY,
+          'X-RapidAPI-Host': 'judge0-ce.p.rapidapi.com'
+        },
+        body: JSON.stringify({
+          language_id: 54, // C++ (GCC 9.2.0)
+          source_code: code,
+          stdin: stdin
+        })
+      });
+
+      const result = await response.json();
+      const elapsed = result.time || ((performance.now() - startTime) / 1000).toFixed(2);
+      renderExecutionOutput({
+        compilerError: result.compile_output || result.stderr || '',
+        programOutput: result.stdout || '',
+        exitStatus: result.status ? result.status.id === 3 ? '0' : result.status.description : '0',
+        elapsed
+      });
+    }
+
+    function renderExecutionOutput({ compilerError, programOutput, exitStatus, elapsed }) {
+      const terminal = document.getElementById('terminal-output');
+      let html = '';
+
+      if (compilerError && exitStatus !== '0') {
+        html += `<div class="out-error"><strong>[Compilation Error / Warning]:</strong>\n${escapeHtml(compilerError)}</div>`;
+      } else {
+        if (compilerError) {
+          html += `<div style="color: #d29922; margin-bottom: 8px;"><strong>[Compiler Warnings]:</strong>\n${escapeHtml(compilerError)}</div>`;
+        }
+        if (programOutput) {
+          html += `<div class="out-stdout">${escapeHtml(programOutput)}</div>`;
+        } else {
+          html += `<div style="color: #8b949e; font-style: italic;">(Chương trình kết thúc và không in ra dữ liệu nào trên STDOUT)</div>`;
+        }
+      }
+
+      const statusClass = exitStatus === '0' ? 'out-success' : 'out-error';
+      html += `<div class="out-meta">Process returned <span class="${statusClass}"><strong>${exitStatus ?? 0}</strong></span> &nbsp;|&nbsp; Execution time: <strong>${elapsed} s</strong></div>`;
+      terminal.innerHTML = html;
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+
+    /*************************************************************************
+     * 5. SỰ KIỆN NÚT BẤM & TIỆN ÍCH GIAO DIỆN
+     *************************************************************************/
+    // Nút New File: Khôi phục template chuẩn Code::Blocks
+    document.getElementById('btn-new').addEventListener('click', () => {
+      if (confirm('Tạo file mới với mẫu chuẩn Code::Blocks? (Nội dung hiện tại sẽ được thay thế)')) {
+        editor.setValue(CODEBLOCKS_TEMPLATE);
+        broadcastState('code', { code: CODEBLOCKS_TEMPLATE });
+      }
+    });
+
+    // Nút CP Template: Chèn mẫu Competitive Programming (<bits/stdc++.h> + Fast I/O)
+    document.getElementById('btn-cp-template').addEventListener('click', () => {
+      editor.setValue(CP_TEMPLATE);
+      broadcastState('code', { code: CP_TEMPLATE });
+    });
+
+    // Nút Build & Run
+    document.getElementById('btn-run').addEventListener('click', runCode);
+
+    // Đồng bộ ô nhập liệu STDIN theo thời gian thực
+    document.getElementById('stdin-input').addEventListener('input', (e) => {
+      broadcastState('stdin', { stdin: e.target.value });
+    });
+
+    // Đổi tên hiển thị
+    usernameInput.addEventListener('change', (e) => {
+      const val = e.target.value.trim();
+      if (val) {
+        myName = val;
+        localStorage.setItem('cpp_collab_username', myName);
+        renderUserList();
+        broadcastState('presence', {});
+      }
+    });
+
+    // Copy link phòng để chia sẻ
+    document.getElementById('btn-share').addEventListener('click', () => {
+      navigator.clipboard.writeText(window.location.href);
+      showToast('🔗 Đã sao chép link phòng! Hãy gửi link này cho bạn bè để code chung.');
+    });
+
+    // Tạo phòng mới
+    document.getElementById('btn-new-room').addEventListener('click', () => {
+      const newRoom = 'cpp-' + Math.random().toString(36).substring(2, 8);
+      window.location.href = `${window.location.pathname}?room=${newRoom}`;
+    });
+
+    // Xóa Terminal
+    document.getElementById('btn-clear-terminal').addEventListener('click', () => {
+      document.getElementById('terminal-output').innerHTML = '<span class="out-info">Đã làm sạch màn hình Terminal.</span>';
+    });
+
+    // Kéo thả thay đổi chiều cao khung IO Console
+    const resizer = document.getElementById('panel-resizer');
+    const ioPanel = document.getElementById('io-panel');
+    let isResizing = false;
+
+    resizer.addEventListener('mousedown', () => {
+      isResizing = true;
+      document.body.style.cursor = 'row-resize';
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isResizing) return;
+      const newHeight = window.innerHeight - e.clientY;
+      if (newHeight >= 120 && newHeight <= window.innerHeight * 0.65) {
+        ioPanel.style.height = `${newHeight}px`;
+        if (editor) editor.layout();
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (isResizing) {
+        isResizing = false;
+        document.body.style.cursor = 'default';
+      }
+    });
+
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      toast.textContent = msg;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+  </script>
+</body>
+</html>
